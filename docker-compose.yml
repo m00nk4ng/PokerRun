@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: poker_user
+      POSTGRES_PASSWORD: Dorset
+      POSTGRES_DB: poker_hands
+    ports:
+    - "15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poker_user -d poker_hands"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build: ./backend
+    environment:
+      DB_USER: poker_user
+      DB_PASSWORD: Dorset
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: poker_hands
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  web:
+    image: nginx:alpine
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+
+volumes:
+  pgdata:
