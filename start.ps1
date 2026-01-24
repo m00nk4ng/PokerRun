@@ -9,7 +9,7 @@ $DistDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ConfigPath = Join-Path $DistDir "web\config.json"
 
 function Fail([string]$msg) {
-  Write-Host ("❌ " + $msg) -ForegroundColor Red
+  Write-Host ("ERROR: " + $msg) -ForegroundColor Red
   exit 1
 }
 
@@ -28,7 +28,7 @@ function Open-Browser([string]$url) {
   try {
     Start-Process $url | Out-Null
   } catch {
-    Write-Host ("🌐 Open this in your browser: " + $url)
+    Write-Host ("Open this in your browser: " + $url)
   }
 }
 
@@ -55,45 +55,33 @@ function Write-Config([string]$url) {
   $obj | Add-Member -Force NoteProperty apiBaseUrl $url
   ($obj | ConvertTo-Json -Depth 10) | Set-Content -Encoding UTF8 $ConfigPath
 
-  Write-Host ("✔ Config updated: apiBaseUrl = " + $url)
+  Write-Host ("Config updated: apiBaseUrl = " + $url)
 }
 
 function Get-LanIp {
-  # Prefer the interface used for default route (best match for LAN)
   try {
-    $route = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction Stop |
-      Sort-Object -Property RouteMetric, InterfaceMetric |
+    $route = Get-NetRoute -DestinationPrefix "0.0.0.0/0" |
+      Sort-Object RouteMetric, InterfaceMetric |
       Select-Object -First 1
 
     if ($route) {
-      $ip = Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $route.InterfaceIndex -ErrorAction Stop |
-        Where-Object { $_.IPAddress -and $_.IPAddress -notlike "169.254.*" } |
+      $ip = Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $route.InterfaceIndex |
+        Where-Object {
+          $_.IPAddress -and
+          $_.IPAddress -ne "127.0.0.1" -and
+          $_.IPAddress -notlike "169.254.*"
+        } |
         Select-Object -First 1
 
-      if ($ip -and $ip.IPAddress) { return $ip.IPAddress }
+      if ($ip) { return $ip.IPAddress }
     }
-  } catch {}
-
-  # Fallback: any non-loopback IPv4
-  try {
-    $ip2 = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
-      Where-Object {
-        $_.IPAddress -and
-        $_.IPAddress -ne "127.0.0.1" -and
-        $_.IPAddress -notlike "169.254.*"
-      } |
-      Select-Object -First 1
-    if ($ip2 -and $ip2.IPAddress) { return $ip2.IPAddress }
   } catch {}
 
   return "127.0.0.1"
 }
 
-# ------------------------------
-# Main (always runs FULL stack)
-# ------------------------------
-
-Write-Host "▶ Checking requirements for FULL stack…"
+# Always run full stack. (-Mode all is optional/backward-compatible)
+Write-Host "Checking requirements for FULL stack..."
 
 if (-not (Command-Exists "docker")) {
   Fail "Docker is not installed. Please install Docker Desktop first."
@@ -120,14 +108,14 @@ $webLanUrl = "http://$lanIp`:8080"
 
 Write-Config $apiUrl
 
-Write-Host "▶ Starting Postgres + API + Web…"
+Write-Host "Starting Postgres + API + Web..."
 Push-Location $DistDir
 docker compose up -d --build
 Pop-Location
 
-Write-Host "✔ Services started"
-Write-Host "🌐 Web (this computer): http://localhost:8080"
-Write-Host "🌐 Web (LAN):          $webLanUrl"
-Write-Host "🔌 API (LAN):          $apiUrl"
+Write-Host "Services started"
+Write-Host ("Web (this computer): http://localhost:8080")
+Write-Host ("Web (LAN):          " + $webLanUrl)
+Write-Host ("API (LAN):          " + $apiUrl)
 
 Open-Browser "http://localhost:8080"
