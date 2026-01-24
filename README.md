@@ -1,24 +1,24 @@
-## macOS / Linux
-### Method A: Run everything (Postgres + FastAPI + Web)
+# PokerRun
+
+## How to run
+
+### macOS / Linux
 ```
 chmod +x ./start.sh
-./start.sh all
-```
-
-### Method B: Run web only (point to LAN API)
-```
-chmod +x ./start.sh
-./start.sh web-only http://192.168.1.50:8000
+./start.sh
 ```
 
 
-## Windows (PowerShell)
-### Method A: Run everything (Postgres + FastAPI + Web)
+### Windows (PowerShell)
 ```
-.\start.ps1 -Mode all
+.\start.ps1
 ```
 
-### Method B: Run web only (point to LAN API)
+## How to shutdown
+
+### macOS / Linux
+
 ```
-.\start.ps1 -Mode web-only -ApiBaseUrl "http://192.168.1.50:8000"
+docker compose down
 ```
+
