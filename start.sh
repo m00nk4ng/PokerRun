@@ -16,11 +16,6 @@ check_command() {
 usage() {
   echo "Usage:"
   echo "  ./start.sh all"
-  echo "  ./start.sh web-only <API_BASE_URL>"
-  echo ""
-  echo "Examples:"
-  echo "  ./start.sh all"
-  echo "  ./start.sh web-only http://192.168.1.50:8000"
 }
 
 open_browser() {
@@ -32,6 +27,35 @@ open_browser() {
   else
     echo "🌐 Open this in your browser: $url"
   fi
+}
+
+# Best-effort LAN IP detection (macOS + Linux)
+get_lan_ip() {
+  local ip=""
+
+  # macOS: try Wi-Fi first, then any active interface
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    ip="$(ipconfig getifaddr en0 2>/dev/null || true)"   # Wi-Fi (common)
+    [[ -z "$ip" ]] && ip="$(ipconfig getifaddr en1 2>/dev/null || true)" # some Macs
+    [[ -z "$ip" ]] && ip="$(route -n get default 2>/dev/null | awk '/interface:/{print $2}' | xargs -I{} ipconfig getifaddr {} 2>/dev/null || true)"
+  else
+    # Linux: use ip route
+    if check_command ip; then
+      ip="$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if ($i=="src") print $(i+1)}' | head -n1)"
+    fi
+  fi
+
+  # Fallback: parse hostname -I / ifconfig
+  if [[ -z "$ip" ]]; then
+    if check_command hostname; then
+      ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+    fi
+  fi
+
+  # Final fallback: localhost
+  [[ -z "$ip" ]] && ip="127.0.0.1"
+
+  echo "$ip"
 }
 
 write_config() {
@@ -67,8 +91,6 @@ print(f"✔ Config updated: apiBaseUrl = {api_url}")
 PY
 }
 
-
-
 MODE="${1:-}"
 [[ -z "$MODE" ]] && usage && exit 1
 
@@ -82,33 +104,25 @@ case "$MODE" in
 
     check_command python3 || fail "python3 is required to update config.json."
 
-    write_config "http://127.0.0.1:8000"
+    LAN_IP="$(get_lan_ip)"
+    API_URL="http://${LAN_IP}:8000"
+    WEB_LAN_URL="http://${LAN_IP}:8080"
+
+    # IMPORTANT: Write LAN API URL so other computers can use it
+    write_config "$API_URL"
 
     echo "▶ Starting Postgres + API + Web…"
     (cd "$DIST_DIR" && docker compose up -d --build)
 
     echo "✔ Services started"
-    echo "🌐 Web: http://localhost:8080"
-    echo "🔌 API: http://localhost:8000"
+    echo "🌐 Web (this computer): http://localhost:8080"
+    echo "🌐 Web (LAN):          $WEB_LAN_URL"
+    echo "🔌 API (LAN):          $API_URL"
 
+    # Open locally for the host user
     open_browser "http://localhost:8080"
     ;;
-    
-  web-only)
-    API_URL="${2:-}"
-    [[ -z "$API_URL" ]] && usage && exit 1
 
-    echo "▶ Checking requirements for WEB ONLY…"
-    check_command python3 || fail "Python 3 is required (python3)."
-
-    write_config "$API_URL"
-
-    echo "🌐 Serving web at http://localhost:8080"
-    open_browser "http://localhost:8080"
-
-    (cd "$DIST_DIR/web" && python3 -m http.server 8080)
-    ;;
-    
   *)
     usage
     exit 1
