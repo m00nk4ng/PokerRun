@@ -1,5 +1,4 @@
 param(
-  [Parameter(Mandatory = $true)]
   [ValidateSet("all")]
   [string]$Mode
 )
@@ -12,13 +11,6 @@ $ConfigPath = Join-Path $DistDir "web\config.json"
 function Fail([string]$msg) {
   Write-Host ("❌ " + $msg) -ForegroundColor Red
   exit 1
-}
-
-function Usage {
-  Write-Host "Usage:"
-  Write-Host "  .\start.ps1 -Mode all"
-  Write-Host ""
-  Write-Host "This starts DB + API + Web and sets apiBaseUrl to the host LAN IP."
 }
 
 function Command-Exists([string]$cmd) {
@@ -97,56 +89,45 @@ function Get-LanIp {
   return "127.0.0.1"
 }
 
-if (-not $Mode) {
-  Usage
-  exit 1
+# ------------------------------
+# Main (always runs FULL stack)
+# ------------------------------
+
+Write-Host "▶ Checking requirements for FULL stack…"
+
+if (-not (Command-Exists "docker")) {
+  Fail "Docker is not installed. Please install Docker Desktop first."
 }
 
-switch ($Mode) {
-  "all" {
-    Write-Host "▶ Checking requirements for FULL stack…"
-
-    if (-not (Command-Exists "docker")) {
-      Fail "Docker is not installed. Please install Docker Desktop first."
-    }
-
-    docker info *> $null
-    if ($LASTEXITCODE -ne 0) {
-      Fail "Docker is installed but not running. Start Docker Desktop and try again."
-    }
-
-    docker compose version *> $null
-    if ($LASTEXITCODE -ne 0) {
-      Fail "Docker Compose plugin not found."
-    }
-
-    $py = Get-Python
-    if (-not $py) {
-      Fail "Python 3 is required to update config.json."
-    }
-
-    $lanIp = Get-LanIp
-    $apiUrl = "http://$lanIp`:8000"
-    $webLanUrl = "http://$lanIp`:8080"
-
-    # IMPORTANT: Write LAN API URL so other computers using http://<host-ip>:8080 will call the correct API.
-    Write-Config $apiUrl
-
-    Write-Host "▶ Starting Postgres + API + Web…"
-    Push-Location $DistDir
-    docker compose up -d --build
-    Pop-Location
-
-    Write-Host "✔ Services started"
-    Write-Host "🌐 Web (this computer): http://localhost:8080"
-    Write-Host "🌐 Web (LAN):          $webLanUrl"
-    Write-Host "🔌 API (LAN):          $apiUrl"
-
-    Open-Browser "http://localhost:8080"
-  }
-
-  default {
-    Usage
-    exit 1
-  }
+docker info *> $null
+if ($LASTEXITCODE -ne 0) {
+  Fail "Docker is installed but not running. Start Docker Desktop and try again."
 }
+
+docker compose version *> $null
+if ($LASTEXITCODE -ne 0) {
+  Fail "Docker Compose plugin not found."
+}
+
+$py = Get-Python
+if (-not $py) {
+  Fail "Python 3 is required to update config.json."
+}
+
+$lanIp = Get-LanIp
+$apiUrl = "http://$lanIp`:8000"
+$webLanUrl = "http://$lanIp`:8080"
+
+Write-Config $apiUrl
+
+Write-Host "▶ Starting Postgres + API + Web…"
+Push-Location $DistDir
+docker compose up -d --build
+Pop-Location
+
+Write-Host "✔ Services started"
+Write-Host "🌐 Web (this computer): http://localhost:8080"
+Write-Host "🌐 Web (LAN):          $webLanUrl"
+Write-Host "🔌 API (LAN):          $apiUrl"
+
+Open-Browser "http://localhost:8080"
