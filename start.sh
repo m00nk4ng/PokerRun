@@ -13,11 +13,6 @@ check_command() {
   command -v "$1" >/dev/null 2>&1
 }
 
-usage() {
-  echo "Usage:"
-  echo "  ./start.sh all"
-}
-
 open_browser() {
   local url="$1"
   if command -v open >/dev/null 2>&1; then
@@ -91,40 +86,34 @@ print(f"✔ Config updated: apiBaseUrl = {api_url}")
 PY
 }
 
+# Optional: accept "all" if user types it, but don't require anything.
 MODE="${1:-}"
-[[ -z "$MODE" ]] && usage && exit 1
+if [[ -n "$MODE" && "$MODE" != "all" ]]; then
+  echo "Usage: ./start.sh"
+  echo "  (optional: ./start.sh all)"
+  exit 1
+fi
 
-case "$MODE" in
-  all)
-    echo "▶ Checking requirements for FULL stack…"
+echo "▶ Checking requirements for FULL stack…"
 
-    check_command docker || fail "Docker is not installed. Please install Docker first."
-    docker info >/dev/null 2>&1 || fail "Docker is installed but not running. Start Docker Desktop and try again."
-    docker compose version >/dev/null 2>&1 || fail "Docker Compose plugin not found."
+check_command docker || fail "Docker is not installed. Please install Docker first."
+docker info >/dev/null 2>&1 || fail "Docker is installed but not running. Start Docker Desktop and try again."
+docker compose version >/dev/null 2>&1 || fail "Docker Compose plugin not found."
 
-    check_command python3 || fail "python3 is required to update config.json."
+check_command python3 || fail "python3 is required to update config.json."
 
-    LAN_IP="$(get_lan_ip)"
-    API_URL="http://${LAN_IP}:8000"
-    WEB_LAN_URL="http://${LAN_IP}:8080"
+LAN_IP="$(get_lan_ip)"
+API_URL="http://${LAN_IP}:8000"
+WEB_LAN_URL="http://${LAN_IP}:8080"
 
-    # IMPORTANT: Write LAN API URL so other computers can use it
-    write_config "$API_URL"
+write_config "$API_URL"
 
-    echo "▶ Starting Postgres + API + Web…"
-    (cd "$DIST_DIR" && docker compose up -d --build)
+echo "▶ Starting Postgres + API + Web…"
+(cd "$DIST_DIR" && docker compose up -d --build)
 
-    echo "✔ Services started"
-    echo "🌐 Web (this computer): http://localhost:8080"
-    echo "🌐 Web (LAN):          $WEB_LAN_URL"
-    echo "🔌 API (LAN):          $API_URL"
+echo "✔ Services started"
+echo "🌐 Web (this computer): http://localhost:8080"
+echo "🌐 Web (LAN):          $WEB_LAN_URL"
+echo "🔌 API (LAN):          $API_URL"
 
-    # Open locally for the host user
-    open_browser "http://localhost:8080"
-    ;;
-
-  *)
-    usage
-    exit 1
-    ;;
-esac
+open_browser "http://localhost:8080"
