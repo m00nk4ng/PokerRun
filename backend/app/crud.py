@@ -203,3 +203,27 @@ async def list_recent_entries_grouped(db: AsyncSession, limit: int = 20):
 
     # Keeps "most recent people" ordering based on first appearance
     return list(grouped.values())
+
+async def list_leaderboard(db: AsyncSession, limit: int = 600, offset: int = 0):
+    rank_col = func.rank().over(order_by=Entry.score.desc()).label("leaderboardRank")
+
+    stmt = (
+        select(Entry, Person, rank_col)
+        .join(Person, Person.id == Entry.person_id)
+        .order_by(Entry.score.desc(), Entry.created_at.desc(), Entry.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()  # each row is (Entry, Person, rank)
+
+    # Return plain dicts shaped exactly for Flutter
+    return [
+        {
+            "person": person,
+            "entry": entry,
+            "leaderboardRank": rank_val,
+        }
+        for (entry, person, rank_val) in rows
+    ]

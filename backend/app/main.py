@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 from .db import get_db, quick_health_check
 from . import crud, schemas
-from .schemas import RankedEntryOut
+from .schemas import LeaderboardEntryOut
 
 app = FastAPI(title="poker_run_fastapi")
 
@@ -116,13 +116,13 @@ async def delete_entry(entry_id: int, db: AsyncSession = Depends(get_db)):
 
 
 # ---- Ranked Entry ----
-@app.get("/entries/ranked", response_model=list[RankedEntryOut])
+@app.get("/entries/ranked", response_model=list[LeaderboardEntryOut])
 async def get_ranked_entries(
-    limit: int = 100,
+    limit: int = 600,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
 ):
-    return await crud.list_ranked_entries(db, limit=limit, offset=offset)
+    return await crud.list_leaderboard(db, limit=limit, offset=offset)
 
 
 # ---- Recent Entry ----

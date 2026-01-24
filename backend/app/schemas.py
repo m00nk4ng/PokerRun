@@ -20,6 +20,13 @@ class PersonCreate(BaseModel):
 
 class PersonOut(PersonCreate):
     id: int
+    first_name: str
+    last_name: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    province_or_territory: Optional[str] = None
+    postal_code: Optional[str] = None
+    phone_number: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -85,3 +92,8 @@ class RecentPersonOut(BaseModel):
 class RecentEntrantOut(BaseModel):
     person: RecentPersonOut
     entryIds: List[int]
+
+class LeaderboardEntryOut(BaseModel):
+    person: PersonOut
+    entry: EntryOut
+    leaderboardRank: int
