@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 from .db import get_db, quick_health_check
 from . import crud, schemas
-from .schemas import LeaderboardEntryOut
+from .schemas import LeaderboardHandOut, PlayerWithHandIdsOut
 
 app = FastAPI(title="poker_run_fastapi")
 
@@ -37,87 +37,95 @@ async def db_time(db: AsyncSession = Depends(get_db)):
     result = await db.execute(text("SELECT NOW()"))
     return {"db_time": str(result.scalar_one())}
 
-# ---- People ----
+# ---- Players ----
 
-@app.post("/people", response_model=schemas.PersonOut)
-async def create_person(payload: schemas.PersonCreate, db: AsyncSession = Depends(get_db)):
-    person = await crud.create_person(db, payload.model_dump())
-    return person
+@app.post("/player", response_model=schemas.PlayerCreateResponse)
+async def create_player(payload: schemas.PlayerCreate, db: AsyncSession = Depends(get_db)):
+    player, hand_id = await crud.create_player_with_hand(db, payload.model_dump())
+    return {"player": player, "handId": hand_id}
 
-@app.get("/people", response_model=list[schemas.PersonOut])
-async def get_people(limit: int = 500, offset: int = 0, db: AsyncSession = Depends(get_db)):
-    return await crud.list_people(db, limit=limit, offset=offset)
+@app.get("/player", response_model=list[schemas.PlayerOut])
+async def get_player(limit: int = 500, offset: int = 0, db: AsyncSession = Depends(get_db)):
+    return await crud.list_players(db, limit=limit, offset=offset)
 
-# ---- Entries ----
+@app.get("/player/with-hands", response_model=list[PlayerWithHandIdsOut])
+async def get_players_with_hands(
+    limit: int = 500,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    return await crud.list_players_with_hand_ids(db, limit=limit, offset=offset)
 
-@app.post("/entries", response_model=schemas.EntryOut)
-async def create_entry(payload: schemas.EntryCreate, db: AsyncSession = Depends(get_db)):
+# ---- Hands ----
+
+@app.post("/hand", response_model=schemas.HandOut)
+async def create_hand(payload: schemas.HandCreate, db: AsyncSession = Depends(get_db)):
     try:
-        hands_as_dicts = [h.model_dump() for h in payload.hands]
-        entry = await crud.create_entry(db, payload.person_id, hands_as_dicts)
-        return entry
+        cards_as_dicts = [h.model_dump() for h in payload.cards]
+        hand = await crud.create_hand(db, payload.player_id, cards_as_dicts)
+        return hand
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-@app.get("/entries", response_model=list[schemas.EntryOut])
-async def get_entries(limit: int = 500, offset: int = 0, db: AsyncSession = Depends(get_db)):
-    return await crud.list_entries(db, limit=limit, offset=offset)
+@app.get("/hand", response_model=list[schemas.HandOut])
+async def get_hands(limit: int = 500, offset: int = 0, db: AsyncSession = Depends(get_db)):
+    return await crud.list_hands(db, limit=limit, offset=offset)
 
-# ---- Update Person ----
-@app.put("/people/{person_id}", response_model=schemas.PersonOut)
-async def update_person(
-    person_id: int,
-    payload: schemas.PersonUpdate,
+# ---- Update Player ----
+@app.put("/player/{player_id}", response_model=schemas.PlayerOut)
+async def update_player(
+    player_id: int,
+    payload: schemas.PlayerUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    person = await crud.update_person(
+    player = await crud.update_player(
         db,
-        person_id,
+        player_id,
         payload.model_dump(exclude_unset=True),
     )
-    if not person:
-        raise HTTPException(status_code=404, detail="Person not found")
-    return person
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+    return player
 
 
-# ---- Delete Person ----
-@app.delete("/people/{person_id}")
-async def delete_person(person_id: int, db: AsyncSession = Depends(get_db)):
-    ok = await crud.delete_person(db, person_id)
+# ---- Delete Player ----
+@app.delete("/player/{player_id}")
+async def delete_player(player_id: int, db: AsyncSession = Depends(get_db)):
+    ok = await crud.delete_player(db, player_id)
     if not ok:
-        raise HTTPException(status_code=404, detail="Person not found")
+        raise HTTPException(status_code=404, detail="Player not found")
     return {"status": "deleted"}
 
 
-# ---- Update Entry ----
-@app.put("/entries/{entry_id}", response_model=schemas.EntryOut)
-async def update_entry(
-    entry_id: int,
-    payload: schemas.EntryUpdate,
+# ---- Update Hand ----
+@app.put("/hand/{hand_id}", response_model=schemas.HandOut)
+async def update_hand(
+    hand_id: int,
+    payload: schemas.HandUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    hands = None
-    if payload.hands is not None:
-        hands = [h.model_dump() for h in payload.hands]
+    cards = None
+    if payload.cards is not None:
+        cards = [h.model_dump() for h in payload.cards]
 
-    entry = await crud.update_entry(db, entry_id, hands)
-    if not entry:
-        raise HTTPException(status_code=404, detail="Entry not found")
-    return entry
+    hand = await crud.update_hand(db, hand_id, cards)
+    if not hand:
+        raise HTTPException(status_code=404, detail="Hand not found")
+    return hand
 
 
-# ---- Delete Entry ----
-@app.delete("/entries/{entry_id}")
-async def delete_entry(entry_id: int, db: AsyncSession = Depends(get_db)):
-    ok = await crud.delete_entry(db, entry_id)
+# ---- Delete Hand ----
+@app.delete("/hand/{hand_id}")
+async def delete_hand(hand_id: int, db: AsyncSession = Depends(get_db)):
+    ok = await crud.delete_hand(db, hand_id)
     if not ok:
-        raise HTTPException(status_code=404, detail="Entry not found")
+        raise HTTPException(status_code=404, detail="Hand not found")
     return {"status": "deleted"}
 
 
-# ---- Ranked Entry ----
-@app.get("/entries/ranked", response_model=list[LeaderboardEntryOut])
-async def get_ranked_entries(
+# ---- Ranked Hand ----
+@app.get("/hand/leaderboard", response_model=list[LeaderboardHandOut])
+async def get_leaderboard_hands(
     limit: int = 600,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
@@ -125,11 +133,11 @@ async def get_ranked_entries(
     return await crud.list_leaderboard(db, limit=limit, offset=offset)
 
 
-# ---- Recent Entry ----
-@app.get("/entries/recent", response_model=list[schemas.RecentEntrantOut])
-async def get_recent_entries(
+# ---- Recent Hand ----
+@app.get("/hand/recent", response_model=list[schemas.RecentEntrantOut])
+async def get_recent_hands(
     limit: int = 20,
     db: AsyncSession = Depends(get_db),
 ):
     limit = min(max(limit, 1), 500)
-    return await crud.list_recent_entries_grouped(db, limit=limit)
+    return await crud.list_recent_hands_grouped(db, limit=limit)

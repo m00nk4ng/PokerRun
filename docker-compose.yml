@@ -15,6 +15,20 @@ services:
       timeout: 3s
       retries: 30
 
+  migrate:
+    build: ./backend
+    environment:
+      DB_USER: poker_user
+      DB_PASSWORD: Dorset
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: poker_hands
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["sh", "-lc", "alembic upgrade head"]
+    restart: "no"
+
   api:
     build: ./backend
     environment:

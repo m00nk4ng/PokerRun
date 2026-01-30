@@ -1,32 +1,35 @@
 from datetime import datetime
-from typing import List, Optional, Literal
-from pydantic import BaseModel, Field
+from typing import List, Optional
+from pydantic import BaseModel, Field, ConfigDict
 
 
-class HandCard(BaseModel):
+def to_camel(s: str) -> str:
+    parts = s.split("_")
+    return parts[0] + "".join(word.capitalize() for word in parts[1:])
+
+class CamelModel(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
+class HandCard(CamelModel):
     suit: str = Field(..., min_length=1, max_length=2)  # e.g. "S", "H", "D", "C"
     rank: str = Field(..., min_length=1, max_length=3)  # e.g. "A", "K", "10"
 
 
-class PersonCreate(BaseModel):
+class PlayerCreate(CamelModel):
     first_name: str
     last_name: Optional[str] = None
     address: Optional[str] = None
-    city: Optional[str] = None
+    town_or_city: Optional[str] = None
     province_or_territory: Optional[str] = None
     postal_code: Optional[str] = None
     phone_number: Optional[str] = None
 
 
-class PersonOut(PersonCreate):
+class PlayerOut(PlayerCreate):
     id: int
-    first_name: str
-    last_name: Optional[str] = None
-    address: Optional[str] = None
-    city: Optional[str] = None
-    province_or_territory: Optional[str] = None
-    postal_code: Optional[str] = None
-    phone_number: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -34,15 +37,30 @@ class PersonOut(PersonCreate):
         from_attributes = True
 
 
-class EntryCreate(BaseModel):
-    person_id: int
-    hands: List[HandCard]
+class PlayerCreateResponse(CamelModel):
+    player: PlayerOut
+    hand_id: int
 
 
-class EntryOut(BaseModel):
+class PlayerHandsResponse(CamelModel):
+    player: PlayerOut
+    hand_ids: List[int]
+
+
+class PlayerWithHandIdsOut(BaseModel):
+    player: PlayerOut
+    handIds: list[int]
+
+
+class HandCreate(CamelModel):
+    player_id: int
+    cards: List[HandCard]
+
+
+class HandOut(CamelModel):
     id: int
-    person_id: int
-    hands: list
+    player_id: int
+    cards: list
     score: int
     created_at: datetime
     updated_at: datetime
@@ -51,37 +69,37 @@ class EntryOut(BaseModel):
         from_attributes = True
 
         
-class PersonUpdate(BaseModel):
+class PlayerUpdate(CamelModel):
     first_name: str | None = None
     last_name: str | None = None
     address: str | None = None
-    city: str | None = None
+    town_or_city: str | None = None
     province_or_territory: str | None = None
     postal_code: str | None = None
     phone_number: str | None = None
 
 
-class EntryUpdate(BaseModel):
-    hands: list[HandCard] | None = None
+class HandUpdate(CamelModel):
+    cards: list[HandCard] | None = None
 
 
-class RankedEntryOut(BaseModel):
+class RankedHandOut(CamelModel):
     id: int
-    person_id: int
+    player_id: int
     score: int
     rank: int
-    hands: list
+    cards: list
 
     class Config:
         from_attributes = True
 
 
-class RecentPersonOut(BaseModel):
+class RecentPlayerOut(CamelModel):
     id: int
     first_name: str
     last_name: Optional[str] = None
     address: Optional[str] = None
-    city: Optional[str] = None
+    town_or_city: Optional[str] = None
     province_or_territory: Optional[str] = None
     postal_code: Optional[str] = None
     phone_number: Optional[str] = None
@@ -89,11 +107,11 @@ class RecentPersonOut(BaseModel):
     updated_at: datetime
 
 
-class RecentEntrantOut(BaseModel):
-    person: RecentPersonOut
-    entryIds: List[int]
+class RecentEntrantOut(CamelModel):
+    player: RecentPlayerOut
+    hand_ids: List[int]
 
-class LeaderboardEntryOut(BaseModel):
-    person: PersonOut
-    entry: EntryOut
+class LeaderboardHandOut(CamelModel):
+    player: PlayerOut
+    hand: HandOut
     leaderboardRank: int
