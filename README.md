@@ -142,7 +142,7 @@ This means:
 - Data is deleted only if you run:
  - `docker compose down -v`
 
-### Backups (optional)
+### Backups
 
 To back up the database, you can:
 

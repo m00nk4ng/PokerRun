@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from .models import Person, Entry
+from .models import Player, Hand
 
 from pokerkit import hands as pokerkit_hands
 
@@ -29,18 +29,18 @@ SUIT_MAP = {
 }
 
 
-def calculate_score(hands: list[dict]) -> int:
+def calculate_score(cards: list[dict]) -> int:
     """
     Convert API card payload into pokerkit PokerRunHand
     and return the numeric score.
     """
-    if not hands:
+    if not cards:
         return 0
 
     try:
         hand_str = "".join(
             f"{RANK_MAP[card['rank']]}{SUIT_MAP[card['suit']]}"
-            for card in hands
+            for card in cards
         )
 
         poker_hand = pokerkit_hands.PokerRunHand(hand_str)
@@ -52,127 +52,186 @@ def calculate_score(hands: list[dict]) -> int:
     except Exception as e:
         raise ValueError(f"Invalid poker hand: {e}")
 
+# TODO: complete this next patch
+def calculate_label(cards: list[dict]) -> str:
+    """
+    Convert API card payload into pokerkit PokerRunHand
+    and return the numeric score.
+    """
+    if not cards:
+        return ''
 
-async def create_person(db: AsyncSession, data: dict) -> Person:
-    person = Person(**data)
-    db.add(person)
+    try:
+        hand_str = "".join(
+            f"{RANK_MAP[card['rank']]}{SUIT_MAP[card['suit']]}"
+            for card in cards
+        )
+
+        poker_hand = pokerkit_hands.PokerRunHand(hand_str)
+        return poker_hand.entry.label.value
+
+    except KeyError as e:
+        raise ValueError(f"Invalid card value: {e}")
+
+    except Exception as e:
+        raise ValueError(f"Invalid poker hand: {e}")
+
+
+async def create_player(db: AsyncSession, data: dict) -> Player:
+    player = Player(**data)
+    db.add(player)
     await db.commit()
-    await db.refresh(person)
-    return person
+    await db.refresh(player)
+    return player
 
 
-async def list_people(db: AsyncSession, limit: int = 100, offset: int = 0) -> list[Person]:
-    stmt = select(Person).offset(offset).limit(limit).order_by(Person.id.desc())
+async def list_players(db: AsyncSession, limit: int = 100, offset: int = 0) -> list[Player]:
+    stmt = select(Player).offset(offset).limit(limit).order_by(Player.id.desc())
     res = await db.execute(stmt)
     return list(res.scalars().all())
 
 
-async def create_entry(db: AsyncSession, person_id: int, hands: list[dict]) -> Entry:
-    # Ensure person exists (simple guard)
-    person = await db.get(Person, person_id)
-    if not person:
-        raise ValueError("Person not found")
+async def create_hand(db: AsyncSession, player_id: int, cards: list[dict]) -> Hand:
+    # Ensure player exists (simple guard)
+    player = await db.get(Player, player_id)
+    if not player:
+        raise ValueError("Player not found")
 
-    score = calculate_score(hands)
+    score = calculate_score(cards)
 
-    entry = Entry(person_id=person_id, hands=hands, score=score)
-    db.add(entry)
+    hand = Hand(player_id=player_id, cards=cards, score=score)
+    db.add(hand)
     await db.commit()
-    await db.refresh(entry)
-    return entry
+    await db.refresh(hand)
+    return hand
+
+async def create_player_no_commit(db: AsyncSession, data: dict) -> Player:
+    player = Player(**data)
+    db.add(player)
+    await db.flush()
+    await db.refresh(player)
+    return player
+
+async def create_hand_no_commit(db: AsyncSession, player_id: int, cards: list[dict]) -> Hand:
+    player = await db.get(Player, player_id)
+    if not player:
+        raise ValueError("Player not found")
+
+    score = calculate_score(cards)
+    hand = Hand(player_id=player_id, cards=cards, score=score)
+    db.add(hand)
+    await db.flush()          # ensures hand.id is generated
+    await db.refresh(hand)    # optional; flush usually enough for id
+    return hand
 
 
-from sqlalchemy import select
-from .models import Person, Entry
+async def create_player_with_hand(db: AsyncSession, player_data: dict):
+    player = await create_player_no_commit(db, player_data)
+    hand = await create_hand_no_commit(db, player.id, [])
+    await db.commit()
+    await db.refresh(player)
+    await db.refresh(hand)
+    return player, hand.id
 
-async def update_person(db: AsyncSession, person_id: int, data: dict):
-    person = await db.get(Person, person_id)
-    if not person:
+
+async def list_players_with_hand_ids(db: AsyncSession, limit: int = 500, offset: int = 0):
+    # 1) get players
+    players = (await db.execute(
+        select(Player).order_by(Player.id).limit(limit).offset(offset)
+    )).scalars().all()
+
+    if not players:
+        return []
+
+    player_ids = [p.id for p in players]
+
+    # 2) get all hands for those players
+    rows = (await db.execute(
+        select(Hand.player_id, Hand.id).where(Hand.player_id.in_(player_ids))
+    )).all()
+
+    # group hand ids by player_id
+    hand_ids_by_player: dict[int, list[int]] = {pid: [] for pid in player_ids}
+    for player_id, hand_id in rows:
+        hand_ids_by_player[player_id].append(hand_id)
+
+    # build response objects
+    return [
+        {"player": p, "handIds": hand_ids_by_player.get(p.id, [])}
+        for p in players
+    ]
+
+
+async def update_player(db: AsyncSession, player_id: int, data: dict):
+    player = await db.get(Player, player_id)
+    if not player:
         return None
 
     for key, value in data.items():
-        setattr(person, key, value)
+        setattr(player, key, value)
 
     await db.commit()
-    await db.refresh(person)
-    return person
+    await db.refresh(player)
+    return player
 
 
-async def delete_person(db: AsyncSession, person_id: int) -> bool:
-    person = await db.get(Person, person_id)
-    if not person:
+async def delete_player(db: AsyncSession, player_id: int) -> bool:
+    player = await db.get(Player, player_id)
+    if not player:
         return False
 
-    await db.delete(person)
+    await db.delete(player)
     await db.commit()
     return True
 
 
-async def update_entry(db: AsyncSession, entry_id: int, hands: list[dict] | None):
-    entry = await db.get(Entry, entry_id)
-    if not entry:
+async def update_hand(db: AsyncSession, hand_id: int, cards: list[dict] | None):
+    hand = await db.get(Hand, hand_id)
+    if not hand:
         return None
 
-    if hands is not None:
-        entry.hands = hands
-        entry.score = calculate_score(hands)
+    if cards is not None:
+        hand.cards = cards
+        hand.score = calculate_score(cards)
 
     await db.commit()
-    await db.refresh(entry)
-    return entry
+    await db.refresh(hand)
+    return hand
 
 
-async def delete_entry(db: AsyncSession, entry_id: int) -> bool:
-    entry = await db.get(Entry, entry_id)
-    if not entry:
+async def delete_hand(db: AsyncSession, hand_id: int) -> bool:
+    hand = await db.get(Hand, hand_id)
+    if not hand:
         return False
 
-    await db.delete(entry)
+    await db.delete(hand)
     await db.commit()
     return True
 
 
-async def list_entries(db: AsyncSession, limit: int = 100, offset: int = 0) -> list[Entry]:
-    stmt = select(Entry).offset(offset).limit(limit).order_by(Entry.id.desc())
+async def list_hands(db: AsyncSession, limit: int = 100, offset: int = 0) -> list[Hand]:
+    stmt = select(Hand).offset(offset).limit(limit).order_by(Hand.id.desc())
     res = await db.execute(stmt)
     return list(res.scalars().all())
 
-async def list_ranked_entries(db: AsyncSession, limit: int = 100, offset: int = 0):
+
+async def list_recent_hands_grouped(db: AsyncSession, limit: int = 20):
     stmt = (
         select(
-            Entry.id.label("id"),
-            Entry.person_id.label("person_id"),
-            Entry.score.label("score"),
-            Entry.hands.label("hands"),
-            func.rank().over(order_by=Entry.score.desc()).label("rank"),
+            Hand.id.label("hand_id"),
+            Player.id.label("player_id"),
+            Player.first_name,
+            Player.last_name,
+            Player.address,
+            Player.town_or_city,
+            Player.province_or_territory,
+            Player.postal_code,
+            Player.phone_number,
+            Player.created_at,
+            Player.updated_at,
         )
-        .order_by(Entry.score.desc())
-        .limit(limit)
-        .offset(offset)
-    )
-
-    result = await db.execute(stmt)
-    rows = result.mappings().all()
-    return [dict(r) for r in rows]
-
-
-async def list_recent_entries_grouped(db: AsyncSession, limit: int = 20):
-    stmt = (
-        select(
-            Entry.id.label("entry_id"),
-            Person.id.label("person_id"),
-            Person.first_name,
-            Person.last_name,
-            Person.address,
-            Person.city,
-            Person.province_or_territory,
-            Person.postal_code,
-            Person.phone_number,
-            Person.created_at,
-            Person.updated_at,
-        )
-        .join(Person, Person.id == Entry.person_id)
-        .order_by(Entry.created_at.desc(), Entry.id.desc())
+        .join(Player, Player.id == Hand.player_id)
+        .order_by(Hand.created_at.desc(), Hand.id.desc())
         .limit(limit)
     )
 
@@ -181,49 +240,50 @@ async def list_recent_entries_grouped(db: AsyncSession, limit: int = 20):
     grouped: dict[int, dict] = {}
 
     for r in rows:
-        pid = r["person_id"]
+        pid = r["player_id"]
         if pid not in grouped:
             grouped[pid] = {
-                "person": {
+                "player": {
                     "id": pid,
                     "first_name": r["first_name"],
                     "last_name": r["last_name"],
                     "address": r["address"],
-                    "city": r["city"],
+                    "town_or_city": r["town_or_city"],
                     "province_or_territory": r["province_or_territory"],
                     "postal_code": r["postal_code"],
                     "phone_number": r["phone_number"],
                     "created_at": r["created_at"],
                     "updated_at": r["updated_at"],
                 },
-                "entryIds": [],
+                "hand_ids": [],
             }
 
-        grouped[pid]["entryIds"].append(r["entry_id"])
+        grouped[pid]["hand_ids"].append(r["hand_id"])
 
-    # Keeps "most recent people" ordering based on first appearance
     return list(grouped.values())
 
+
+
 async def list_leaderboard(db: AsyncSession, limit: int = 600, offset: int = 0):
-    rank_col = func.rank().over(order_by=Entry.score.desc()).label("leaderboardRank")
+    rank_col = func.rank().over(order_by=Hand.score.desc()).label("leaderboardRank")
 
     stmt = (
-        select(Entry, Person, rank_col)
-        .join(Person, Person.id == Entry.person_id)
-        .order_by(Entry.score.desc(), Entry.created_at.desc(), Entry.id.desc())
+        select(Hand, Player, rank_col)
+        .join(Player, Player.id == Hand.player_id)
+        .order_by(Hand.score.desc(), Hand.created_at.desc(), Hand.id.desc())
         .limit(limit)
         .offset(offset)
     )
 
     result = await db.execute(stmt)
-    rows = result.all()  # each row is (Entry, Person, rank)
+    rows = result.all()  # each row is (Hand, Player, rank)
 
     # Return plain dicts shaped exactly for Flutter
     return [
         {
-            "person": person,
-            "entry": entry,
+            "player": player,
+            "hand": hand,
             "leaderboardRank": rank_val,
         }
-        for (entry, person, rank_val) in rows
+        for (hand, player, rank_val) in rows
     ]
