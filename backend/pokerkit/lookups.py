@@ -142,8 +142,12 @@ class Lookup(ABC):
 
     @classmethod
     def __hash(cls, ranks: Iterable[Rank]) -> int:
-        return prod(map(cls.__multipliers.__getitem__, ranks))
-
+        return prod(
+            cls.__multipliers[r]
+            for r in ranks
+            if r is not Rank.UNKNOWN
+        )
+    
     @classmethod
     def __hash_multisets(
             cls,
@@ -374,7 +378,7 @@ class PokerRunLookup(Lookup):
     <Label.TWO_PAIR: 'Two pair'>
     """
 
-    rank_order = RankOrder.STANDARD
+    rank_order = RankOrder.STAND_ACES_HIGH
 
     def _add_entries(self) -> None:
         self._add_multisets(Counter({1: 5}), (False,), Label.HIGH_CARD)

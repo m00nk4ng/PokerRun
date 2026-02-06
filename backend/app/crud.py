@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 
 from .models import Player, Hand
 
@@ -134,10 +134,17 @@ async def create_player_with_hand(db: AsyncSession, player_data: dict):
     return player, hand.id
 
 
-async def list_players_with_hand_ids(db: AsyncSession, limit: int = 500, offset: int = 0):
+async def list_players_with_hands(
+    db: AsyncSession,
+    limit: int = 500,
+    offset: int = 0,
+):
     # 1) get players
     players = (await db.execute(
-        select(Player).order_by(Player.id).limit(limit).offset(offset)
+        select(Player)
+        .order_by(Player.id)
+        .limit(limit)
+        .offset(offset)
     )).scalars().all()
 
     if not players:
@@ -147,19 +154,25 @@ async def list_players_with_hand_ids(db: AsyncSession, limit: int = 500, offset:
 
     # 2) get all hands for those players
     rows = (await db.execute(
-        select(Hand.player_id, Hand.id).where(Hand.player_id.in_(player_ids))
-    )).all()
+        select(Hand)
+        .where(Hand.player_id.in_(player_ids))
+        .order_by(Hand.player_id, Hand.id)
+    )).scalars().all()
 
-    # group hand ids by player_id
-    hand_ids_by_player: dict[int, list[int]] = {pid: [] for pid in player_ids}
-    for player_id, hand_id in rows:
-        hand_ids_by_player[player_id].append(hand_id)
+    # group hands by player_id
+    hands_by_player: dict[int, list[Hand]] = {pid: [] for pid in player_ids}
+    for hand in rows:
+        hands_by_player[hand.player_id].append(hand)
 
     # build response objects
     return [
-        {"player": p, "handIds": hand_ids_by_player.get(p.id, [])}
-        for p in players
+        {
+            "player": player,
+            "hands": hands_by_player.get(player.id, []),
+        }
+        for player in players
     ]
+
 
 
 async def update_player(db: AsyncSession, player_id: int, data: dict):
@@ -183,6 +196,55 @@ async def delete_player(db: AsyncSession, player_id: int) -> bool:
     await db.delete(player)
     await db.commit()
     return True
+
+
+async def update_player_with_hands_ops(
+    db: AsyncSession,
+    player_id: int,
+    player_update: dict,
+    number_of_hands_to_add: int,
+    hands_to_delete: list[int],
+):
+    # 1) Ensure player exists
+    player = await db.get(Player, player_id)
+    if not player:
+        return None
+
+    # 2) Update player fields (ignore id if present)
+    player_update.pop("id", None)
+    for key, value in player_update.items():
+        setattr(player, key, value)
+
+    # 3) Delete requested hands (only for this player)
+    if hands_to_delete:
+        await db.execute(
+            delete(Hand).where(
+                Hand.player_id == player_id,
+                Hand.id.in_(hands_to_delete),
+            )
+        )
+
+    # 4) Add N new hands (use existing no-commit helper style)
+    if number_of_hands_to_add and number_of_hands_to_add > 0:
+        for _ in range(number_of_hands_to_add):
+            # New blank hand: cards=[], score computed as 0 by calculate_score([])
+            await create_hand_no_commit(db, player_id, [])
+
+    # 5) Commit once
+    await db.commit()
+
+    # 6) Refresh player
+    await db.refresh(player)
+
+    # 7) Fetch current hands list for this player (so response returns Hand rows)
+    rows = (await db.execute(
+        select(Hand).where(Hand.player_id == player_id).order_by(Hand.id)
+    )).scalars().all()
+
+    return {
+        "player": player,
+        "hands": list(rows),
+    }
 
 
 async def update_hand(db: AsyncSession, hand_id: int, cards: list[dict] | None):

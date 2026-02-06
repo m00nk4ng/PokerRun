@@ -130,8 +130,23 @@ class RankOrder(tuple[Rank, ...], Enum):
     >>> RankOrder.EIGHT_OR_BETTER_LOW[-1]
     <Rank.EIGHT: '8'>
     """
-
     STANDARD: tuple[Rank, ...] = (
+        Rank.DEUCE,
+        Rank.TREY,
+        Rank.FOUR,
+        Rank.FIVE,
+        Rank.SIX,
+        Rank.SEVEN,
+        Rank.EIGHT,
+        Rank.NINE,
+        Rank.TEN,
+        Rank.JACK,
+        Rank.QUEEN,
+        Rank.KING,
+        Rank.ACE,
+    )
+    STAND_ACES_HIGH: tuple[Rank, ...] = (
+        Rank.UNKNOWN, # Interpose a dummy rank to prevent Ace being used low
         Rank.DEUCE,
         Rank.TREY,
         Rank.FOUR,

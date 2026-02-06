@@ -42,14 +42,9 @@ class PlayerCreateResponse(CamelModel):
     hand_id: int
 
 
-class PlayerHandsResponse(CamelModel):
-    player: PlayerOut
-    hand_ids: List[int]
-
-
-class PlayerWithHandIdsOut(BaseModel):
-    player: PlayerOut
-    handIds: list[int]
+# class PlayerWithHandIdsOut(BaseModel):
+#     player: PlayerOut
+#     handIds: list[int]
 
 
 class HandCreate(CamelModel):
@@ -77,6 +72,17 @@ class PlayerUpdate(CamelModel):
     province_or_territory: str | None = None
     postal_code: str | None = None
     phone_number: str | None = None
+
+
+class UpdatePlayerPayload(CamelModel):
+    player: PlayerUpdate
+    number_of_hands_to_add: int = 0
+    hands_to_delete: List[int] = Field(default_factory=list)
+
+
+class PlayerHandsResponse(CamelModel):
+    player: PlayerOut
+    hands: List[HandOut]
 
 
 class HandUpdate(CamelModel):

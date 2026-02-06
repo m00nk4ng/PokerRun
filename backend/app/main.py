@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 from .db import get_db, quick_health_check
 from . import crud, schemas
-from .schemas import LeaderboardHandOut, PlayerWithHandIdsOut
+from .schemas import LeaderboardHandOut
 
 app = FastAPI(title="poker_run_fastapi")
 
@@ -37,8 +37,8 @@ async def db_time(db: AsyncSession = Depends(get_db)):
     result = await db.execute(text("SELECT NOW()"))
     return {"db_time": str(result.scalar_one())}
 
-# ---- Players ----
 
+# ---- Players ----
 @app.post("/player", response_model=schemas.PlayerCreateResponse)
 async def create_player(payload: schemas.PlayerCreate, db: AsyncSession = Depends(get_db)):
     player, hand_id = await crud.create_player_with_hand(db, payload.model_dump())
@@ -48,30 +48,6 @@ async def create_player(payload: schemas.PlayerCreate, db: AsyncSession = Depend
 async def get_player(limit: int = 500, offset: int = 0, db: AsyncSession = Depends(get_db)):
     return await crud.list_players(db, limit=limit, offset=offset)
 
-@app.get("/player/with-hands", response_model=list[PlayerWithHandIdsOut])
-async def get_players_with_hands(
-    limit: int = 500,
-    offset: int = 0,
-    db: AsyncSession = Depends(get_db),
-):
-    return await crud.list_players_with_hand_ids(db, limit=limit, offset=offset)
-
-# ---- Hands ----
-
-@app.post("/hand", response_model=schemas.HandOut)
-async def create_hand(payload: schemas.HandCreate, db: AsyncSession = Depends(get_db)):
-    try:
-        cards_as_dicts = [h.model_dump() for h in payload.cards]
-        hand = await crud.create_hand(db, payload.player_id, cards_as_dicts)
-        return hand
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-@app.get("/hand", response_model=list[schemas.HandOut])
-async def get_hands(limit: int = 500, offset: int = 0, db: AsyncSession = Depends(get_db)):
-    return await crud.list_hands(db, limit=limit, offset=offset)
-
-# ---- Update Player ----
 @app.put("/player/{player_id}", response_model=schemas.PlayerOut)
 async def update_player(
     player_id: int,
@@ -87,8 +63,6 @@ async def update_player(
         raise HTTPException(status_code=404, detail="Player not found")
     return player
 
-
-# ---- Delete Player ----
 @app.delete("/player/{player_id}")
 async def delete_player(player_id: int, db: AsyncSession = Depends(get_db)):
     ok = await crud.delete_player(db, player_id)
@@ -97,7 +71,50 @@ async def delete_player(player_id: int, db: AsyncSession = Depends(get_db)):
     return {"status": "deleted"}
 
 
-# ---- Update Hand ----
+# ---- PlayersWithHands ----
+@app.get("/player/with-hands", response_model=list[schemas.PlayerHandsResponse])
+async def get_players_with_hands(
+    limit: int = 500,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    return await crud.list_players_with_hands(db, limit=limit, offset=offset)
+
+
+@app.put("/player/with-hands/{player_id}", response_model=schemas.PlayerHandsResponse)
+async def update_player_with_hands(
+    player_id: int,
+    payload: schemas.UpdatePlayerPayload,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await crud.update_player_with_hands_ops(
+        db=db,
+        player_id=player_id,
+        player_update=payload.player.model_dump(),
+        number_of_hands_to_add=payload.number_of_hands_to_add,
+        hands_to_delete=payload.hands_to_delete,
+    )
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    return result
+
+
+# ---- Hands ----
+@app.post("/hand", response_model=schemas.HandOut)
+async def create_hand(payload: schemas.HandCreate, db: AsyncSession = Depends(get_db)):
+    try:
+        cards_as_dicts = [h.model_dump() for h in payload.cards]
+        hand = await crud.create_hand(db, payload.player_id, cards_as_dicts)
+        return hand
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/hand", response_model=list[schemas.HandOut])
+async def get_hands(limit: int = 500, offset: int = 0, db: AsyncSession = Depends(get_db)):
+    return await crud.list_hands(db, limit=limit, offset=offset)
+
 @app.put("/hand/{hand_id}", response_model=schemas.HandOut)
 async def update_hand(
     hand_id: int,
@@ -113,8 +130,6 @@ async def update_hand(
         raise HTTPException(status_code=404, detail="Hand not found")
     return hand
 
-
-# ---- Delete Hand ----
 @app.delete("/hand/{hand_id}")
 async def delete_hand(hand_id: int, db: AsyncSession = Depends(get_db)):
     ok = await crud.delete_hand(db, hand_id)
@@ -123,7 +138,7 @@ async def delete_hand(hand_id: int, db: AsyncSession = Depends(get_db)):
     return {"status": "deleted"}
 
 
-# ---- Ranked Hand ----
+# ---- Leaderboard ----
 @app.get("/hand/leaderboard", response_model=list[LeaderboardHandOut])
 async def get_leaderboard_hands(
     limit: int = 600,
