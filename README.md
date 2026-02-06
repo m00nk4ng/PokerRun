@@ -11,9 +11,9 @@ The project is designed so one computer hosts the app, and other devices on the 
 <br>
 
 ## Component Version
-Flutter front end: v.0.4.5
+Flutter front end: v.0.5.0
 
-FastAPI back end: v.0.4.5
+FastAPI back end: v.0.5.0
 
 <br>
 
